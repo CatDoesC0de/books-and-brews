@@ -1,0 +1,36 @@
+Language: Cpp
+IndentWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: 4
+AlignArrayOfStructures: Left
+AlignOperands: Align
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterEnum: true
+    AfterStruct: true
+    AfterCaseLabel: true
+    AfterClass: true
+    AfterControlStatement: Always
+    AfterFunction: true
+    AfterNamespace: true
+    BeforeCatch: true
+    BeforeElse: true
+    SplitEmptyFunction: false
+    SplitEmptyRecord: false
+    SplitEmptyNamespace: false
+BracedInitializerIndentWidth: 4
+BreakAfterReturnType: Automatic
+IncludeBlocks: Merge
+IndentCaseLabels: true
+IndentPPDirectives: BeforeHash
+PackConstructorInitializers: NextLine
+PointerAlignment: Left
+QualifierAlignment: Left
+ReferenceAlignment: Left
+SpaceInEmptyBlock: false
