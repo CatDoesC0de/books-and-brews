@@ -63,7 +63,7 @@ menu CreateHomeMenu()
     AddSelection.Label = "Add";
     AddSelection.Handler = [](logger& Logger, bool& IsRunning) {
         ShowMenu(AddMenu, Logger, IsRunning);
-        return false;
+        return true;
     };
 
     HomeMenu.Selections.push_back(AddSelection);
