@@ -20,9 +20,9 @@
 
 void Flush();
 
-struct range { int LowerBound, UpperBound; };
+struct range { size_t LowerBound; size_t UpperBound; };
 bool InRange(int Value, range Range);
 
 void ClearScreen();
 int ReadSelection(logger& Logger, range SelectionRange);
-
+bool ReadInt(logger& Logger, int& Result);

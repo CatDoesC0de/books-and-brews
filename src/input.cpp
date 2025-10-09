@@ -48,7 +48,7 @@ int ReadSelection(logger& Logger, range SelectionRange)
 
     if (Error == EOF || Error == 0)
     {
-        BB_ERROR(Logger, "Invalid Selection. Expected numeric input.");
+        BB_LOG_ERROR(Logger, "Invalid Selection. Expected numeric input.");
         Selection = BAD_INPUT;
     }
     else if (Selection == EXIT)
@@ -58,9 +58,25 @@ int ReadSelection(logger& Logger, range SelectionRange)
     else if (!InRange(Selection, SelectionRange))
     {
         Selection = BAD_INPUT;
-        BB_ERROR(Logger, "Invalid Selection. Expected value in range [%d, %d]",
+        BB_LOG_ERROR(Logger, "Invalid Selection. Expected value in range [%d, %d]",
                  SelectionRange.LowerBound, SelectionRange.UpperBound);
     }
 
     return Selection;
+}
+
+bool ReadInt(logger& Logger, int& Result)
+{
+    int ReadResult;
+    int Error = scanf("%d", &ReadResult);
+    Flush();
+
+    if (Error == EOF || Error == 0)
+    {
+        BB_LOG_ERROR(Logger, "Invalid Selection. Expected numeric input.");
+        return false;
+    }
+
+    Result = ReadResult;
+    return true;
 }

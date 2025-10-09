@@ -13,18 +13,26 @@
 
 #include "bb_common.hpp"
 
-#define BB_INFO(logger, Format, ...)                                           \
+#define BB_LOG_INFO(logger, Format, ...)                                           \
     Log(logger, FormatString(log_level::log_info, Format, ##__VA_ARGS__))
-#define BB_WARN(logger, Format, ...)                                           \
+#define BB_LOG_WARN(logger, Format, ...)                                           \
     Log(logger, FormatString(log_level::log_warning, Format, ##__VA_ARGS__))
-#define BB_ERROR(logger, Format, ...)                                          \
+#define BB_LOG_ERROR(logger, Format, ...)                                          \
     Log(logger, FormatString(log_level::log_error, Format, ##__VA_ARGS__))
+
+#ifdef BB_DEBUG_BUILD
+    #define BB_LOG_DEBUG(logger, Format, ...)                                          \
+        Log(logger, FormatString(log_level::log_debug, Format, ##__VA_ARGS__))
+#else
+    #define BB_LOG_DEBUG(loggger, Format, ...)
+#endif
 
 enum class log_level
 {
     log_error,
     log_info,
-    log_warning
+    log_warning,
+    log_debug
 };
 
 struct logger
@@ -33,6 +41,8 @@ struct logger
     char** Messages;
     u32 MessagesSize;
 };
+
+extern logger Logger;
 
 logger CreateLogger(const char* Name, u32 Messages);
 void FreeLogger(logger& Logger);

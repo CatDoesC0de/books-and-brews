@@ -17,12 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BB_INFO(logger, Format, ...)                                           \
-    Log(logger, FormatString(log_level::log_info, Format, ##__VA_ARGS__))
-#define BB_WARN(logger, Format, ...)                                           \
-    Log(logger, FormatString(log_level::log_warning, Format, ##__VA_ARGS__))
-#define BB_ERROR(logger, Format, ...)                                          \
-    Log(logger, FormatString(log_level::log_error, Format, ##__VA_ARGS__))
+logger Logger = CreateLogger("B&B Logs", 10);
 
 const char* LogLevelToString(log_level LogLevel)
 {
