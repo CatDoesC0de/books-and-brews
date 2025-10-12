@@ -10,24 +10,16 @@
  */
 
 #include "input.hpp"
+#include "logger.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#define EXIT -1
-#define BAD_INPUT -2
-
-void Flush()
+static void Flush()
 {
     int Character;
     while ((Character = getchar()) != '\n' && Character != EOF)
         ;
-}
-
-bool InRange(int Value, range Range)
-{
-    bool Result = Value >= Range.LowerBound && Value <= Range.UpperBound;
-    return Result;
 }
 
 void ClearScreen()
@@ -39,41 +31,15 @@ void ClearScreen()
 #endif
 }
 
-int ReadSelection(logger& Logger, range SelectionRange)
-{
-    int Selection = BAD_INPUT;
-    printf(">> ");
-    int Error = scanf("%d", &Selection);
-    Flush();
-
-    if (Error == EOF || Error == 0)
-    {
-        BB_LOG_ERROR(Logger, "Invalid Selection. Expected numeric input.");
-        Selection = BAD_INPUT;
-    }
-    else if (Selection == EXIT)
-    {
-        Selection = EXIT;
-    }
-    else if (!InRange(Selection, SelectionRange))
-    {
-        Selection = BAD_INPUT;
-        BB_LOG_ERROR(Logger, "Invalid Selection. Expected value in range [%d, %d]",
-                 SelectionRange.LowerBound, SelectionRange.UpperBound);
-    }
-
-    return Selection;
-}
-
-bool ReadInt(logger& Logger, int& Result)
+bool ReadInt(int& Result)
 {
     int ReadResult;
-    int Error = scanf("%d", &ReadResult);
+    int Error = scanf("%i", &ReadResult);
     Flush();
 
     if (Error == EOF || Error == 0)
     {
-        BB_LOG_ERROR(Logger, "Invalid Selection. Expected numeric input.");
+        BB_LOG_ERROR("Invalid Selection. Expected numeric input.");
         return false;
     }
 

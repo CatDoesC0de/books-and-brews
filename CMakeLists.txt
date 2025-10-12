@@ -21,7 +21,6 @@ add_executable(${PROJECT_NAME}
     src/books_and_brews.cpp
     src/logger.cpp
     src/input.cpp
-    src/menu.cpp
     src/database.cpp
 )
 

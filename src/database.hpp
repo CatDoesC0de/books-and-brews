@@ -14,10 +14,26 @@
 
 #include "sqlite3.h"
 
-bool Step(sqlite3_stmt* Cursor, sqlite3* Database);
-bool Prepare(sqlite3_stmt* Cursor, sqlite3* Database);
+extern sqlite3* Database;
 
-int GetOutgoingOrderCount(sqlite3* Database);
+typedef const unsigned char Text;
+struct statement_reader
+{
+    unsigned int ReadIndex;
+    sqlite3_stmt* Statement;
 
-int GetItemCount(sqlite3* Database);
-sqlite3_stmt* GetItemList(sqlite3* Database); 
+    int integer();
+    Text* text();
+    double decimal();
+};
+
+bool DatabaseInit(const char* FileName);
+void DatabaseClose();
+
+bool Step(sqlite3_stmt* Cursor);
+bool Prepare(sqlite3_stmt* Cursor);
+
+int GetOutgoingOrderCount();
+
+int GetItemCount();
+sqlite3_stmt* GetItemList(); 
