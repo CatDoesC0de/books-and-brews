@@ -80,6 +80,11 @@ void Rollback()
     sqlite3_exec(Database, "ROLLBACK;", nullptr, nullptr, nullptr);
 }
 
+int64_t LastInsertRowID()
+{
+    return  sqlite3_last_insert_rowid(Database);
+}
+
 bool Step(sqlite3_stmt* Statement)
 {
     int StepResult = sqlite3_step(Statement);
@@ -92,6 +97,7 @@ bool Step(sqlite3_stmt* Statement)
         BB_LOG_DEBUG("Failed to step query. (%s)", sqlite3_errmsg(Database));
         return false;
     }
+
 
     return true;
 }
@@ -140,7 +146,7 @@ static sqlite3_stmt* GetList(const char* Table)
     return Statement;
 }
 
-bool CreateOrder(int& Result)
+bool CreateOrder(int64_t& Result)
 {
     const char Insert[] = 
         "INSERT INTO MenuOrder (OrderDate) VALUES (current_date)";
@@ -149,9 +155,7 @@ bool CreateOrder(int& Result)
 
     if (Statement != nullptr && Step(Statement))
     {
-        int OrderNumber = sqlite3_column_int(Statement, 0);
-        Result = OrderNumber;
-
+        Result = LastInsertRowID();
         return true;
     }
     else

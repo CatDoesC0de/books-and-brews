@@ -13,6 +13,7 @@
 #pragma once
 
 #include "sqlite3.h"
+#include <cstdint>
 
 extern sqlite3* Database;
 
@@ -46,10 +47,12 @@ void Transaction();
 void Commit();
 void Rollback();
 
+int64_t LastInsertRowID();
+
 bool Step(sqlite3_stmt* Cursor);
 bool Prepare(sqlite3_stmt* Cursor);
 
-bool CreateOrder(int& Result);
+bool CreateOrder(int64_t& Result);
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity);
 int GetOutgoingOrderCount();
 

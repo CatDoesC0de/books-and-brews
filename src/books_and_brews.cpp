@@ -151,7 +151,7 @@ void ShowAddOrderMenu()
 
                 if (!AddAnotherItem)
                 {
-                    int OrderNumber;
+                    int64_t OrderNumber;
                     if (!CreateOrder(OrderNumber))
                     {
                         return;
@@ -168,7 +168,7 @@ void ShowAddOrderMenu()
                     }
                     Commit();
 
-                    BB_LOG_INFO("Order created with ID: %i", OrderNumber);
+                    BB_LOG_INFO("Order created with ID: %li", OrderNumber);
                     return;
                 }
             }
