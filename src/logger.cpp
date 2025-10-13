@@ -104,7 +104,7 @@ void Log(char* String)
     Messages[0] = (char*)String;
 }
 
-void PrintLogs()
+    void PrintLogs()
 {
     printf("\t\t[%s]\n", S_Logger.Name);
     for (int i = S_Logger.MessagesSize - 1; i >= 0; i--)
@@ -116,6 +116,7 @@ void PrintLogs()
             printf("%s\n", Message);
         }
     }
+    printf("\n");
 }
 
 void FreeLogger()

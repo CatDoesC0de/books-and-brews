@@ -46,3 +46,33 @@ bool ReadInt(int& Result)
     Result = ReadResult;
     return true;
 }
+
+bool ReadBool(bool& Result)
+{
+    char ReadResult;
+    int Error = scanf("%c", &ReadResult);
+    Flush();
+
+    if (Error == EOF || Error == 0)
+    {
+        BB_LOG_ERROR("Invalid Selection. Expected character.");
+        return false;
+    }
+
+    if (
+            ReadResult == 'Y' 
+            || ReadResult == 'y' 
+            || ReadResult == 'N' 
+            || ReadResult == 'n'
+       )
+    {
+        Result = (ReadResult == 'Y' || ReadResult == 'y');
+    }
+    else
+    {
+        BB_LOG_ERROR("Invalid selection. Expected Y/y or N/n");
+        return false;
+    }
+    
+    return true;
+}

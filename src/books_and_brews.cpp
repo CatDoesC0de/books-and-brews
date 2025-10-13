@@ -15,6 +15,7 @@
 #include "logger.hpp"
 #include <stdio.h>
 #include <vector>
+#include <string>
 
 void ShowAddOrderMenu()
 {
@@ -24,7 +25,6 @@ void ShowAddOrderMenu()
         PrintLogs();
 
         int MenuItemCount = GetItemCount();
-
         if (MenuItemCount == 0)
         {
             BB_LOG_ERROR(
@@ -33,39 +33,43 @@ void ShowAddOrderMenu()
         }
 
         int RowsPerPage;
-        while (true)
+        do
         {
+            printf("Select items to add to this order.\n");
             printf("Fetched %i menu items. How many do you want per-page? (-1 "
                    "to cancel)\n",
                    MenuItemCount);
             printf(">> ");
-
-            if (ReadInt(RowsPerPage))
-            {
-                break;
-            }
-        }
+        } while (!ReadInt(RowsPerPage));
 
         if (RowsPerPage == -1)
         {
             return;
         }
 
-        std::vector<int> ItemsForOrder;
-        int Page = 0;
+        struct OrderInput
+        {
+            std::string ItemName;
+            int ItemID;
+            int Quantity;
+        } Order;
+
+        std::vector<OrderInput> ItemsForOrder;
         sqlite3_stmt* MenuItemList = GetItemList();
+        
+        int Page = 0;
         while (true)
         {
             ClearScreen();
             PrintLogs();
 
+            printf("Items in cart: %lu\n", ItemsForOrder.size());
             printf("Select an item to add. (-2 to cancel, 0 to go to the next "
                    "page, -1 to go back a page)\n");
 
             for (int i = 0; i < RowsPerPage && Step(MenuItemList); i++)
             {
-                statement_reader Reader = {};
-                Reader.Statement = MenuItemList;
+                statement_reader Reader(MenuItemList);
 
                 int ItemID = Reader.integer();
                 Text* ItemName = Reader.text();
@@ -78,35 +82,95 @@ void ShowAddOrderMenu()
 
             printf(">> ");
 
-            int ItemID;
-            if (!ReadInt(ItemID))
+            int Choice;
+            if (!ReadInt(Choice))
             {
             }
-            else if (ItemID == -2)
+            else if (Choice == -2)
             {
                 return;
             }
-            else if (ItemID == 0)
+            else if (Choice == 0)
             {
                 if ((Page * RowsPerPage) + RowsPerPage < MenuItemCount)
                 {
                     Page++;
                 }
             }
-            else if (ItemID == -1)
+            else if (Choice == -1)
             {
                 if (Page > 0)
                 {
                     Page--;
                 }
             }
-            else if (ItemID < (Page * RowsPerPage) || ItemID > (Page * RowsPerPage) + RowsPerPage - 1)
+            else if (Choice < (Page * RowsPerPage) || Choice > (Page * RowsPerPage) + RowsPerPage)
             {
                 BB_LOG_ERROR("Invalid choice. Choice not on the current page.");
             }
-            else 
+            else //Actual ItemID path
             {
-                //Handle quantity then prompt for another item.
+                Order.ItemID = Choice;
+
+                sqlite3_stmt* Item = GetItem(Order.ItemID);
+                Order.ItemName = reinterpret_cast<const char*>(sqlite3_column_text(Item, 1));
+                sqlite3_finalize(Item);
+
+                while (true)
+                {
+                    ClearScreen();
+                    PrintLogs();
+
+                    printf("Quantity for %s:\n", Order.ItemName.c_str());
+                    printf(">> ");
+
+                    if (ReadInt(Order.Quantity))
+                    {
+                        if (Order.Quantity <= 0)
+                        {
+                            BB_LOG_ERROR("Quantity must be a positive integer.");
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+                ItemsForOrder.push_back(Order);
+
+                bool AddAnotherItem;
+                do 
+                {
+                    ClearScreen();
+                    PrintLogs();
+
+                    printf("Add another item? [Y/N]\n");
+                    printf(">> ");
+                }
+                while (!ReadBool(AddAnotherItem));
+
+                if (!AddAnotherItem)
+                {
+                    int OrderNumber;
+                    if (!CreateOrder(OrderNumber))
+                    {
+                        return;
+                    }
+
+                    Transaction();
+                    for (OrderInput Input : ItemsForOrder)
+                    {
+                        if (!AddItemToOrder(OrderNumber, Input.ItemID, Input.Quantity))
+                        {
+                            Rollback();
+                            return;
+                        }
+                    }
+                    Commit();
+
+                    BB_LOG_INFO("Order created with ID: %i", OrderNumber);
+                    return;
+                }
             }
 
             //Reset to updated page
@@ -117,7 +181,7 @@ void ShowAddOrderMenu()
             }
         }
 
-        
+        sqlite3_finalize(MenuItemList);
     }
 }
 

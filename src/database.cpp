@@ -12,6 +12,7 @@
 #include "database.hpp"
 #include "logger.hpp"
 #include <stdio.h>
+#include <assert.h>
 
 sqlite3* Database;
 
@@ -20,7 +21,7 @@ bool DatabaseInit(const char* FileName)
     if (sqlite3_open_v2(FileName, &Database, SQLITE_OPEN_READWRITE, nullptr) !=
         SQLITE_OK)
     {
-        fprintf(stderr, "Failed to open database with file '%s'. (%s)",
+        fprintf(stderr, "Failed to open database with file '%s'. (%s)\n",
                 FileName, sqlite3_errmsg(Database));
         return false;
     }
@@ -32,6 +33,10 @@ void DatabaseClose()
 {
     sqlite3_close_v2(Database);
 }
+
+statement_reader::statement_reader(sqlite3_stmt* Statement)
+    : Statement(Statement), ReadIndex(0)
+{}
 
 int statement_reader::integer()
 {
@@ -51,9 +56,38 @@ double statement_reader::decimal()
     return Result;
 }
 
+statement_binder::statement_binder(sqlite3_stmt* Statement)
+    : Statement(Statement), BindIndex(1)
+{}
+
+void statement_binder::integer(int Value)
+{
+    sqlite3_bind_int(Statement, BindIndex++, Value);
+}
+
+void Transaction()
+{
+    sqlite3_exec(Database, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+}
+
+void Commit()
+{
+    sqlite3_exec(Database, "COMMIT;", nullptr, nullptr, nullptr);
+}
+
+void Rollback()
+{
+    sqlite3_exec(Database, "ROLLBACK;", nullptr, nullptr, nullptr);
+}
+
 bool Step(sqlite3_stmt* Statement)
 {
-    if (sqlite3_step(Statement) != SQLITE_ROW)
+    int StepResult = sqlite3_step(Statement);
+    if (
+            StepResult == SQLITE_ERROR
+            || StepResult == SQLITE_MISUSE
+            || StepResult == SQLITE_BUSY
+        )
     {
         BB_LOG_DEBUG("Failed to step query. (%s)", sqlite3_errmsg(Database));
         return false;
@@ -68,7 +102,7 @@ sqlite3_stmt* Prepare(const char* Query)
     if (sqlite3_prepare_v2(Database, Query, -1, &Statement, nullptr) !=
         SQLITE_OK)
     {
-        BB_LOG_DEBUG("Failed to prepare query. (%s)", sqlite3_errmsg(Database));
+        BB_LOG_DEBUG("Failed to prepare query. '%s' (%s)", Query, sqlite3_errmsg(Database));
     }
 
     return Statement;
@@ -106,10 +140,76 @@ static sqlite3_stmt* GetList(const char* Table)
     return Statement;
 }
 
+bool CreateOrder(int& Result)
+{
+    const char Insert[] = 
+        "INSERT INTO MenuOrder (OrderDate) VALUES (current_date)";
+
+    sqlite3_stmt* Statement = Prepare(Insert);
+
+    if (Statement != nullptr && Step(Statement))
+    {
+        int OrderNumber = sqlite3_column_int(Statement, 0);
+        Result = OrderNumber;
+
+        return true;
+    }
+    else
+    {
+        BB_LOG_ERROR("Failed to create a new order.");
+    }
+
+    return false;
+}
+
+bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
+{
+    const char Insert[] = 
+        "INSERT INTO MenuOrderItem (OrderNumber, ItemID, OrderQuantity)"
+        "VALUES (?, ?, ?)";
+
+    sqlite3_stmt* Statement = Prepare(Insert);
+
+    if (Statement != nullptr)
+    {
+        statement_binder Binder(Statement);
+
+        Binder.integer(OrderNumber);
+        Binder.integer(ItemID);
+        Binder.integer(ItemQuantity);
+
+        return Step(Statement);
+    }
+    else
+    {
+        return false;
+    }
+}
+
 int GetOutgoingOrderCount()
 {
     int Result = GetCount("MenuOrder");
     return Result;
+}
+
+sqlite3_stmt* GetItem(int ItemID)
+{
+    sqlite3_stmt* Statement = Prepare(
+            "SELECT * FROM Item WHERE ItemID = ?"
+            );
+
+    if (Statement != nullptr)
+    {
+        sqlite3_bind_int(Statement, 1, ItemID);
+
+        if (!Step(Statement))
+        {
+            BB_LOG_ERROR("Failed to retrieve Item with ItemID = %i", ItemID);
+            Statement = nullptr;
+        }
+    }
+
+    return Statement;
 }
 
 int GetItemCount()

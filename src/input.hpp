@@ -15,4 +15,6 @@
 #include <stdlib.h>
 
 void ClearScreen();
+
 bool ReadInt(int& Result);
+bool ReadBool(bool& Result);
