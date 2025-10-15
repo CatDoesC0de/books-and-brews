@@ -90,20 +90,28 @@ static bool _Execute(sqlite3_stmt* Statement)
     if (sqlite3_step(Statement) != SQLITE_DONE)
     {
         BB_LOG_ERROR("Failed to step query. (%s)", sqlite3_errmsg(Database));
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 bool StepRow(sqlite3_stmt* Statement)
 {
-    if (sqlite3_step(Statement) != SQLITE_ROW)
+    int StepResult = sqlite3_step(Statement);
+
+    if (StepResult == SQLITE_DONE)
+    {
+        return false; //No more rows, return false
+    }
+
+    if (StepResult != SQLITE_ROW) //Not returning a row, log the error
     {
         BB_LOG_ERROR("Failed to step query. (%s)", sqlite3_errmsg(Database));
         return false;
     }
 
-    return false;
+    return true;
 }
 
 sqlite3_stmt* Prepare(const char* Query)
@@ -114,10 +122,9 @@ sqlite3_stmt* Prepare(const char* Query)
     {
         BB_LOG_DEBUG("Failed to prepare query. '%s' (%s)", Query,
                      sqlite3_errmsg(Database));
+        Statement = nullptr;
     }
-
     return Statement;
-    ;
 }
 
 static int _GetCount(const char* Table)
@@ -150,17 +157,19 @@ bool CreateOrder(int64_t& Result)
     sqlite3_stmt* Statement =
         Prepare("INSERT INTO MenuOrder (OrderDate) VALUES (current_date)");
 
+    bool Created = false;
     if (Statement != nullptr && _Execute(Statement))
     {
         Result = LastInsertRowID();
-        return true;
+        Created = true;
     }
     else
     {
         BB_LOG_ERROR("Failed to create a new order.");
     }
 
-    return false;
+    sqlite3_finalize(Statement);
+    return Created;
 }
 
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
@@ -180,7 +189,7 @@ bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
 
         Result = _Execute(Statement);
     }
-    
+
     sqlite3_finalize(Statement);
     return Result;
 }
@@ -204,6 +213,7 @@ sqlite3_stmt* GetOrder(int OrderNumber)
         {
             BB_LOG_ERROR("Failed to retrieve MenuOrder with OrderNumber = %i",
                          OrderNumber);
+            sqlite3_finalize(Statement);
             Statement = nullptr;
         }
     }
@@ -274,6 +284,8 @@ sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID)
             BB_LOG_ERROR("Failed to retrieve MenuOrderItem with OrderNumber = "
                          "%i, ItemID = %i",
                          OrderNumber, ItemID);
+
+            sqlite3_finalize(Statement);
             Statement = nullptr;
         }
     }
@@ -292,6 +304,7 @@ sqlite3_stmt* GetItem(int ItemID)
         if (!StepRow(Statement))
         {
             BB_LOG_ERROR("Failed to retrieve Item with ItemID = %i", ItemID);
+            sqlite3_finalize(Statement);
             Statement = nullptr;
         }
     }

@@ -336,8 +336,16 @@ void ShowUpdateOrderMenu()
     }
 
     int OrderNumber = GetOrderSelection();
-    int OrderItemID = GetOrderItemSelection(OrderNumber);
+    if (OrderNumber == -1)
+    {
+        return;
+    }
 
+    int OrderItemID = GetOrderItemSelection(OrderNumber);
+    if (OrderItemID == -1)
+    {
+        return;
+    }
     while (true)
     {
         ClearScreen();
