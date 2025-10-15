@@ -11,8 +11,8 @@
 
 #include "database.hpp"
 #include "logger.hpp"
-#include <stdio.h>
 #include <assert.h>
+#include <stdio.h>
 
 sqlite3* Database;
 
@@ -82,24 +82,28 @@ void Rollback()
 
 int64_t LastInsertRowID()
 {
-    return  sqlite3_last_insert_rowid(Database);
+    return sqlite3_last_insert_rowid(Database);
 }
 
-bool Step(sqlite3_stmt* Statement)
+static bool _Execute(sqlite3_stmt* Statement)
 {
-    int StepResult = sqlite3_step(Statement);
-    if (
-            StepResult == SQLITE_ERROR
-            || StepResult == SQLITE_MISUSE
-            || StepResult == SQLITE_BUSY
-        )
+    if (sqlite3_step(Statement) != SQLITE_DONE)
     {
-        BB_LOG_DEBUG("Failed to step query. (%s)", sqlite3_errmsg(Database));
+        BB_LOG_ERROR("Failed to step query. (%s)", sqlite3_errmsg(Database));
+    }
+
+    return false;
+}
+
+bool StepRow(sqlite3_stmt* Statement)
+{
+    if (sqlite3_step(Statement) != SQLITE_ROW)
+    {
+        BB_LOG_ERROR("Failed to step query. (%s)", sqlite3_errmsg(Database));
         return false;
     }
 
-
-    return true;
+    return false;
 }
 
 sqlite3_stmt* Prepare(const char* Query)
@@ -108,14 +112,15 @@ sqlite3_stmt* Prepare(const char* Query)
     if (sqlite3_prepare_v2(Database, Query, -1, &Statement, nullptr) !=
         SQLITE_OK)
     {
-        BB_LOG_DEBUG("Failed to prepare query. '%s' (%s)", Query, sqlite3_errmsg(Database));
+        BB_LOG_DEBUG("Failed to prepare query. '%s' (%s)", Query,
+                     sqlite3_errmsg(Database));
     }
 
     return Statement;
     ;
 }
 
-static int GetCount(const char* Table)
+static int _GetCount(const char* Table)
 {
     int Result = 0;
 
@@ -123,7 +128,7 @@ static int GetCount(const char* Table)
     snprintf(Query, sizeof(Query), "SELECT COUNT(*) FROM %s;", Table);
 
     sqlite3_stmt* Statement = Prepare(Query);
-    if (Statement != nullptr && Step(Statement))
+    if (Statement != nullptr && StepRow(Statement))
     {
         Result = sqlite3_column_int(Statement, 0);
     }
@@ -132,28 +137,20 @@ static int GetCount(const char* Table)
     return Result;
 }
 
-static sqlite3_stmt* GetList(const char* Table)
+static sqlite3_stmt* _GetList(const char* Table)
 {
     char Query[256];
     snprintf(Query, sizeof(Query), "SELECT * FROM %s", Table);
-
     sqlite3_stmt* Statement = Prepare(Query);
-    if (Statement != nullptr)
-    {
-        sqlite3_bind_text(Statement, 1, Table, -1, nullptr);
-    }
-
     return Statement;
 }
 
 bool CreateOrder(int64_t& Result)
 {
-    const char Insert[] = 
-        "INSERT INTO MenuOrder (OrderDate) VALUES (current_date)";
+    sqlite3_stmt* Statement =
+        Prepare("INSERT INTO MenuOrder (OrderDate) VALUES (current_date)");
 
-    sqlite3_stmt* Statement = Prepare(Insert);
-
-    if (Statement != nullptr && Step(Statement))
+    if (Statement != nullptr && _Execute(Statement))
     {
         Result = LastInsertRowID();
         return true;
@@ -168,12 +165,11 @@ bool CreateOrder(int64_t& Result)
 
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
 {
-    const char Insert[] = 
-        "INSERT INTO MenuOrderItem (OrderNumber, ItemID, OrderQuantity)"
-        "VALUES (?, ?, ?)";
+    sqlite3_stmt* Statement =
+        Prepare("INSERT INTO MenuOrderItem (OrderNumber, ItemID, OrderQuantity)"
+                "VALUES (?, ?, ?)");
 
-    sqlite3_stmt* Statement = Prepare(Insert);
-
+    bool Result = false;
     if (Statement != nullptr)
     {
         statement_binder Binder(Statement);
@@ -182,31 +178,118 @@ bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
         Binder.integer(ItemID);
         Binder.integer(ItemQuantity);
 
-        return Step(Statement);
+        Result = _Execute(Statement);
     }
-    else
-    {
-        return false;
-    }
+    
+    sqlite3_finalize(Statement);
+    return Result;
 }
 
-int GetOutgoingOrderCount()
+int GetOrderCount()
 {
-    int Result = GetCount("MenuOrder");
+    int Result = _GetCount("MenuOrder");
     return Result;
+}
+
+sqlite3_stmt* GetOrder(int OrderNumber)
+{
+    sqlite3_stmt* Statement =
+        Prepare("SELECT * FROM MenuOrder WHERE OrderNumber = ?");
+
+    if (Statement != nullptr)
+    {
+        sqlite3_bind_int(Statement, 1, OrderNumber);
+
+        if (!StepRow(Statement))
+        {
+            BB_LOG_ERROR("Failed to retrieve MenuOrder with OrderNumber = %i",
+                         OrderNumber);
+            Statement = nullptr;
+        }
+    }
+
+    return Statement;
+}
+
+sqlite3_stmt* GetOrderList()
+{
+    return _GetList("MenuOrder");
+}
+
+sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber)
+{
+    sqlite3_stmt* Statement = Prepare(R"(
+        SELECT
+        MenuOrderItem.OrderQuantity,
+        Item.ItemID,
+        Item.ItemName
+        FROM MenuOrderItem
+        JOIN Item ON MenuOrderItem.ItemID = Item.ItemID
+        WHERE MenuOrderItem.OrderNumber = ?
+    )");
+
+    if (Statement != nullptr)
+    {
+        sqlite3_bind_int(Statement, 1, OrderNumber);
+    }
+
+    return Statement;
+}
+
+int GetOrderItemCount(int OrderNumber)
+{
+    sqlite3_stmt* Statement =
+        Prepare("SELECT COUNT(*) FROM MenuOrderItem WHERE OrderNumber = ?");
+
+    int Result = 0;
+    if (Statement != nullptr)
+    {
+        sqlite3_bind_int(Statement, 1, OrderNumber);
+
+        if (StepRow(Statement))
+        {
+            Result = sqlite3_column_int(Statement, 0);
+        }
+    }
+
+    sqlite3_finalize(Statement);
+    return Result;
+}
+
+sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID)
+{
+    sqlite3_stmt* Statement = Prepare(R"(
+        SELECT * 
+        FROM MenuOrderItem
+        WHERE OrderNumber = ? AND ItemID = ?
+    )");
+
+    if (Statement != nullptr)
+    {
+        sqlite3_bind_int(Statement, 1, OrderNumber);
+        sqlite3_bind_int(Statement, 2, ItemID);
+
+        if (!StepRow(Statement))
+        {
+            BB_LOG_ERROR("Failed to retrieve MenuOrderItem with OrderNumber = "
+                         "%i, ItemID = %i",
+                         OrderNumber, ItemID);
+            Statement = nullptr;
+        }
+    }
+
+    return Statement;
 }
 
 sqlite3_stmt* GetItem(int ItemID)
 {
-    sqlite3_stmt* Statement = Prepare(
-            "SELECT * FROM Item WHERE ItemID = ?"
-            );
+    sqlite3_stmt* Statement = Prepare("SELECT * FROM Item WHERE ItemID = ?");
 
     if (Statement != nullptr)
     {
         sqlite3_bind_int(Statement, 1, ItemID);
 
-        if (!Step(Statement))
+        if (!StepRow(Statement))
         {
             BB_LOG_ERROR("Failed to retrieve Item with ItemID = %i", ItemID);
             Statement = nullptr;
@@ -218,12 +301,12 @@ sqlite3_stmt* GetItem(int ItemID)
 
 int GetItemCount()
 {
-    int Result = GetCount("Item");
+    int Result = _GetCount("Item");
     return Result;
 }
 
 sqlite3_stmt* GetItemList()
 {
-    sqlite3_stmt* Result = GetList("Item");
+    sqlite3_stmt* Result = _GetList("Item");
     return Result;
 }

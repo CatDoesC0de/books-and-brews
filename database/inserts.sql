@@ -51,11 +51,14 @@ INSERT INTO MenuOrderItem(OrderNumber, ItemID, OrderQuantity) VALUES
     (1, 1, 1),
 
     --Order 2
-    (1, 4, 1),
+    (2, 4, 1),
     (2, 2, 2),
 
     --Order 3
     (3, 5, 1),
 
     --Order 4
-    (4, 3, 3);
+    (4, 3, 3),
+
+    --Order 5
+    (5, 3, 8)

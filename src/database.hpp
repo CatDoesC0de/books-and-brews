@@ -49,12 +49,18 @@ void Rollback();
 
 int64_t LastInsertRowID();
 
-bool Step(sqlite3_stmt* Cursor);
+bool StepRow(sqlite3_stmt* Cursor);
 bool Prepare(sqlite3_stmt* Cursor);
 
 bool CreateOrder(int64_t& Result);
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity);
-int GetOutgoingOrderCount();
+int GetOrderCount();
+sqlite3_stmt* GetOrder(int OrderNumber);
+sqlite3_stmt* GetOrderList();
+
+sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber); 
+int GetOrderItemCount(int OrderNumber);
+sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID);
 
 sqlite3_stmt* GetItem(int ItemID);
 int GetItemCount();
