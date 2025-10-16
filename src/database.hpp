@@ -4,9 +4,9 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: database.hpp
  * Author: Connor Taylor
- * Date last updated: 10/9/2025
+ * Last Update: 10/16/2025
  * Purpose: Define utility functions for interacting with the database
  */
 
@@ -46,7 +46,7 @@ struct statement_binder
 struct ingredient
 {
     int SupplyID;
-    float Quantity;
+    double Quantity;
 };
 
 struct order_input
@@ -88,7 +88,14 @@ sqlite3_stmt* GetItem(int ItemID);
 int GetItemCount();
 sqlite3_stmt* GetItemList();
 bool CreateItem(const char* ItemName, const char* ItemDescription,
-                float ItemPrice, const std::vector<ingredient>& Ingredients);
+                double ItemPrice, const std::vector<ingredient>& Ingredients);
+
+//Ingredient
+int GetIngredientCount(int ItemID);
+bool DeleteItem(int ItemID);
+bool DeleteIngredient(int ItemID, int SupplyID);
+bool UpdateIngredient(int ItemID, int SupplyID, double Quantity);
+sqlite3_stmt* GetIngredientList(int ItemID);
 
 // Supply
 bool CreateSupply(const char* SupplyName, const char* UnitName, int Quantity);

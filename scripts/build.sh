@@ -22,7 +22,8 @@ DB_FILE="../build/books_and_brews.db"
 rm -f "$DB_FILE"
 
 #Create a fresh database
+echo "Populating books_and_brews.db"
 sqlite3 "$DB_FILE" < ../database/setup.sql
 
-cmake -S .. -B ../build
-cmake --build ../build --config Release
+cmake -DCMAKE_BUILD_TYPE=Release -S .. -B ../build
+cmake --build ../build

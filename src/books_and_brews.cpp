@@ -6,6 +6,7 @@
  *
  * Program name: books_and_brews.cpp
  * Author: Connor Taylor
+ * Last Update: 10/16/2025
  * Purpose: Create a software interface for managing the Books and Brews
  * inventory.
  */
@@ -178,7 +179,7 @@ void ShowAddItemMenu()
         Reader.integer(); // Skip Quantity
         const char* SupplyUnitName = Reader.text();
 
-        float IngredientQuantity;
+        double IngredientQuantity;
         while (true)
         {
             ClearScreen();
@@ -189,7 +190,7 @@ void ShowAddItemMenu()
                    SupplyName, SupplyUnitName);
             printf(">> ");
 
-            if (ReadPositiveFloat(IngredientQuantity))
+            if (ReadPositiveDouble(IngredientQuantity))
             {
                 break;
             }
@@ -236,7 +237,8 @@ void ShowAddItemMenu()
         {
             break;
         }
-        BB_LOG_ERROR("Invalid item description. Only letters and punctuation are allowed in "
+        BB_LOG_ERROR("Invalid item description. Only letters and punctuation "
+                     "are allowed in "
                      "the description.");
     }
 
@@ -245,7 +247,7 @@ void ShowAddItemMenu()
         return;
     }
 
-    float ItemPrice;
+    double ItemPrice;
     while (true)
     {
         ClearScreen();
@@ -254,7 +256,7 @@ void ShowAddItemMenu()
         printf("What is the price of '%s'? (-1 to cancel)\n", ItemName.c_str());
         printf(">> ");
 
-        if (ReadPositiveFloat(ItemPrice))
+        if (ReadPositiveDouble(ItemPrice))
         {
             break;
         }
@@ -262,7 +264,8 @@ void ShowAddItemMenu()
         BB_LOG_ERROR("Invalid item price. Expected postive decimal > 0.");
     }
 
-    if (CreateItem(ItemName.c_str(), ItemDescription.c_str(), ItemPrice, Ingredients))
+    if (CreateItem(ItemName.c_str(), ItemDescription.c_str(), ItemPrice,
+                   Ingredients))
     {
         int64_t ItemID = LastInsertRowID();
         BB_LOG_INFO("Item '%s' created with ID: %i", ItemName.c_str(), ItemID);
@@ -347,7 +350,8 @@ void ShowAddSupplyMenu()
     if (CreateSupply(SupplyName.c_str(), UnitName.c_str(), Quantity))
     {
         int64_t SupplyID = LastInsertRowID();
-        BB_LOG_INFO("Created supply '%s' with ID: %i", SupplyName.c_str(), SupplyID);
+        BB_LOG_INFO("Created supply '%s' with ID: %i", SupplyName.c_str(),
+                    SupplyID);
     }
 }
 
@@ -407,7 +411,6 @@ void ShowAddOrderMenu()
             break;
         }
 
-
         sqlite3_stmt* Item = GetItem(ItemChoice);
         const char* ItemName = row_reader(Item, 1).text();
 
@@ -431,7 +434,7 @@ void ShowAddOrderMenu()
         }
         sqlite3_finalize(Item);
 
-        ItemsForOrder.push_back({ .ItemID = ItemChoice, .Quantity = Quantity});
+        ItemsForOrder.push_back({.ItemID = ItemChoice, .Quantity = Quantity});
         bool AddAnotherItem;
         while (true)
         {
@@ -454,7 +457,7 @@ void ShowAddOrderMenu()
 
             break;
         }
-        
+
         sqlite3_finalize(MenuItemList);
     }
 
@@ -565,6 +568,166 @@ int GetOrderItemSelection(int OrderNumber)
     return OrderItemID;
 }
 
+int GetItemSelection()
+{
+    ClearScreen();
+    PrintLogs();
+
+    auto ItemPrintCallback = [](row_reader Reader) {
+        int ItemID = Reader.integer();
+        const char* ItemName = Reader.text();
+        Reader.text();
+        double ItemPrice = Reader.decimal();
+
+        printf("%i. %s - $%.2lf\n", ItemID, ItemName, ItemPrice);
+    };
+
+    auto ItemSelectionText = []() { printf("Select an item to update. "); };
+
+    auto ItemValidation = [](int ItemID) {
+        sqlite3_stmt* Item = GetItem(ItemID);
+        sqlite3_finalize(Item);
+        return Item != nullptr;
+    };
+
+    sqlite3_stmt* ItemList = GetItemList();
+    int ItemID =
+        GetPagingSelection(ItemList, GetItemCount(), "item", ItemPrintCallback,
+                           ItemSelectionText, ItemValidation);
+
+    sqlite3_finalize(ItemList);
+    return ItemID;
+}
+
+int GetIngredientSelection(int ItemID)
+{
+    ClearScreen();
+    PrintLogs();
+
+    auto IngredientPrintCallback = [](row_reader Reader) {
+        Reader.integer();
+        int SupplyID = Reader.integer();
+        double Quantity = Reader.decimal();
+
+        sqlite3_stmt* Supply = GetSupplyItem(SupplyID);
+
+        Reader = row_reader(Supply, 1);
+        const char* SupplyName = Reader.text();
+        Reader.decimal();
+        const char* UnitName = Reader.text();
+
+        printf("%i. %s - %.2lf %s\n", SupplyID, SupplyName, Quantity, UnitName);
+    };
+
+    auto IngredientSelectionText = []() {
+        printf("Select an ingredient to update. ");
+    };
+
+    auto IngredientValidation = [](int SupplyID) {
+        sqlite3_stmt* Supply = GetSupplyItem(SupplyID);
+        sqlite3_finalize(Supply);
+        return Supply != nullptr;
+    };
+
+    sqlite3_stmt* IngredientList = GetIngredientList(ItemID);
+    int SupplyID = GetPagingSelection(
+        IngredientList, GetIngredientCount(ItemID), "item",
+        IngredientPrintCallback, IngredientSelectionText, IngredientValidation);
+
+    sqlite3_finalize(IngredientList);
+    return SupplyID;
+}
+
+void ShowUpdateItemMenu()
+{
+    int ItemCount = GetItemCount();
+    if (ItemCount == 0)
+    {
+        BB_LOG_ERROR("There are 0 items in the system currently.");
+        return;
+    }
+
+    int ItemID = GetItemSelection();
+    if (ItemID == -1)
+    {
+        return;
+    }
+
+    int SupplyID = GetIngredientSelection(ItemID);
+    if (SupplyID == -1)
+    {
+        return;
+    }
+
+    sqlite3_stmt* Supply = GetSupplyItem(ItemID);
+    const char* SupplyName = row_reader(Supply, 1).text();
+
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("Remove this supply from this item? Or edit this supply's "
+               "quantity? (-1 to cancel)\n");
+        printf("1. Remove\n");
+        printf("2. Edit Quantity\n");
+
+        int Choice;
+        if (!ReadInt(Choice))
+        {
+            continue;
+        }
+
+        switch (Choice)
+        {
+            case -1: return;
+            case 1:
+                if (GetIngredientCount(ItemID) - 1 == 0)
+                {
+                    if (DeleteItem(ItemID))
+                    {
+                        BB_LOG_INFO("Deleted item #%i", ItemID);
+                    }
+                }
+                else if (DeleteIngredient(ItemID, SupplyID))
+                {
+                    BB_LOG_INFO("'%s' removed from item #%i", SupplyName,
+                                ItemID);
+                }
+                return;
+            case 2:
+                int Quantity;
+                while (true)
+                {
+                    ClearScreen();
+                    PrintLogs();
+
+                    printf("New Quantity? \n");
+                    printf(">> ");
+
+                    if (ReadPositiveInt(Quantity))
+                    {
+                        break;
+                        BB_LOG_ERROR("Quantity must be a positive integer.");
+                    }
+                    BB_LOG_ERROR("Quantity must be a positive integer.");
+                }
+
+                if (UpdateIngredient(ItemID, SupplyID, Quantity))
+                {
+                    BB_LOG_INFO("Ingredient %s updated with quantity %i",
+                                SupplyName, Quantity);
+                }
+                return;
+            default:
+                BB_LOG_ERROR("Invalid choice. Choice not available.");
+                continue;
+        }
+    }
+
+    sqlite3_finalize(Supply);
+}
+
 void ShowUpdateOrderMenu()
 {
     int OrderCount = GetOrderCount();
@@ -664,7 +827,7 @@ void ShowUpdateMenu(bool& ShouldExit)
 
         printf("What would you like to update? (-1 to exit, 0 to go back)\n");
         printf("1. Order\n");
-        printf("2. Menu Item\n");
+        printf("2. Item\n");
         printf(">> ");
 
         int Choice;
@@ -676,9 +839,54 @@ void ShowUpdateMenu(bool& ShouldExit)
         switch (Choice)
         {
             case 1: ShowUpdateOrderMenu(); break;
+            case 2: ShowUpdateItemMenu(); break;
+            case 0: return;
+            case -1: ShouldExit = true; return;
+            default:
+                BB_LOG_ERROR("Invalid choice. Choice not available.");
+                continue;
+        }
+    }
+}
+
+void ShowDeleteMenu(bool& ShouldExit)
+{
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What would you like to delete? (-1 to exit, 0 to go back)\n");
+        printf("1. Order\n");
+        printf("2. Item\n");
+        printf(">> ");
+
+        int Choice;
+        if (!ReadInt(Choice))
+        {
+            continue;
+        }
+
+        switch (Choice)
+        {
+            case 1:
+            {
+                int OrderNumber = GetOrderSelection();
+                if (DeleteOrder(OrderNumber))
+                {
+                    BB_LOG_INFO("Deleted order #%i", OrderNumber);
+                }
+                return;
+            }
             case 2:
-                // Show update menu item menu
-                break;
+            {
+                int ItemID = GetItemSelection();
+                if (DeleteItem(ItemID))
+                {
+                    BB_LOG_INFO("Deleted item #%i", ItemID);
+                }
+                return;
+            }
             case 0: return;
             case -1: ShouldExit = true; return;
             default:
@@ -707,6 +915,7 @@ int main(int Argc, char** Argv)
         printf("What would you like to do? (-1 to exit)\n");
         printf("1. Add\n");
         printf("2. Update\n");
+        printf("3. Delete\n");
         printf(">> ");
 
         int Choice;
@@ -720,6 +929,7 @@ int main(int Argc, char** Argv)
         {
             case 1: ShowAddMenu(ShouldExit); break;
             case 2: ShowUpdateMenu(ShouldExit); break;
+            case 3: ShowDeleteMenu(ShouldExit); break;
             case -1: goto cleanup; break;
             default:
                 BB_LOG_ERROR("Invalid choice. Choice not available.");

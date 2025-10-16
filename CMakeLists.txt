@@ -6,8 +6,6 @@ set(CMAKE_CXX_EXTENSIONS Off)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS On)
 
-set(CMAKE_BUILD_TYPE Debug)
-
 add_library(sqlite3 STATIC
     vendor/sqlite3/sqlite3.c
 )
@@ -26,6 +24,12 @@ add_executable(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME} sqlite3)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE 
-    $<$<CONFIG:Debug>:BB_DEBUG_BUILD>
-)
+if(CMAKE_CONFIGURATION_TYPES) # Multi-config (VS, Xcode)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        $<$<CONFIG:Debug>:BB_DEBUG_BUILD>
+    )
+else() # Single-config (Makefiles, Ninja)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_definitions(${PROJECT_NAME} PRIVATE BB_DEBUG_BUILD)
+    endif()
+endif()

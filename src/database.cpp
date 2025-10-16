@@ -4,8 +4,9 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: database.cpp
  * Author: Connor Taylor
+ * Last Update: 10/16/2025
  * Purpose: Define utility functions for interacting with the database
  */
 
@@ -490,7 +491,7 @@ sqlite3_stmt* GetItemList()
 }
 
 bool CreateItem(const char* ItemName, const char* ItemDescription,
-                float ItemPrice, const std::vector<ingredient>& Ingredients)
+                double ItemPrice, const std::vector<ingredient>& Ingredients)
 {
     bool Result = true;
     sqlite3_stmt* Statement = Prepare(R"(
@@ -528,7 +529,7 @@ bool CreateItem(const char* ItemName, const char* ItemDescription,
         {
             for (const ingredient Ingredient : Ingredients)
             {
-                BB_LOG_DEBUG("ItemID = %i SupplyID = %i, Quantity = %i", ItemID,
+                BB_LOG_DEBUG("ItemID = %i SupplyID = %i, Quantity = %lf", ItemID,
                              Ingredient.SupplyID, Ingredient.Quantity);
                 statement_binder(Statement)
                     .integer(ItemID)
@@ -549,6 +550,125 @@ bool CreateItem(const char* ItemName, const char* ItemDescription,
     sqlite3_finalize(Statement);
     Result ? Commit() : Rollback();
     return Result;
+}
+
+int GetIngredientCount(int ItemID)
+{
+    int Result = 0;
+    sqlite3_stmt* Statement = Prepare(R"(
+        SELECT COUNT(*)
+        FROM Ingredient
+        WHERE ItemID = ?
+    )");
+
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(ItemID);
+
+        if (StepRow(Statement))
+        {
+            Result = row_reader(Statement).integer();
+        }
+    }
+
+    sqlite3_finalize(Statement);
+    return Result;
+}
+
+bool DeleteIngredient(int ItemID, int SupplyID)
+{
+    sqlite3_stmt* Statement =
+        Prepare("DELETE FROM Ingredient WHERE ItemID = ? AND SupplyID = ?");
+
+    bool Result = false;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(ItemID).integer(SupplyID);
+
+        if (!(Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR(
+                "Failed to delete ingredient. ItemID = %i, SupplyID = %i",
+                ItemID, SupplyID);
+        }
+    }
+
+    return Result;
+}
+
+bool UpdateIngredient(int ItemID, int SupplyID, double Quantity)
+{
+    bool Result = false;
+
+    sqlite3_stmt* Statement = Prepare(R"(
+        UPDATE Ingredient 
+        SET Quantity = ? 
+        WHERE ItemID = ? AND SupplyID = ?
+    )");
+
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement)
+            .integer(Quantity)
+            .integer(ItemID)
+            .integer(SupplyID);
+
+        if ((Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR("Failed to update ingredient. ItemID = %i, SupplyID = %i", ItemID, SupplyID);
+        }
+    }
+
+    return Result;
+}
+
+bool DeleteItem(int ItemID)
+{
+    bool Result = true;
+    sqlite3_stmt* Statement = GetIngredientList(ItemID);
+
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(ItemID);
+        while (StepRow(Statement))
+        {
+            int SupplyID = row_reader(Statement, 1).integer();
+            if (!(Result = DeleteIngredient(ItemID, SupplyID)))
+            {
+                break; 
+            }
+        }
+    }
+    sqlite3_finalize(Statement);
+    
+    Statement = Prepare("DELETE FROM Item WHERE ItemID = ?");
+    if (Result)
+    {
+        if (Statement != nullptr)
+        {
+            statement_binder(Statement).integer(ItemID);
+            if (!(Result = _Execute(Statement)))
+            {
+                BB_LOG_ERROR("Failed to delete item. ItemID = %i", ItemID);
+            }
+        }
+    }
+
+    Result ? Commit() : Rollback();
+    sqlite3_finalize(Statement);
+    return Result;
+}
+
+sqlite3_stmt* GetIngredientList(int ItemID)
+{
+    sqlite3_stmt* Statement = Prepare("SELECT * FROM Ingredient WHERE ItemID = ?");
+
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(ItemID);
+    }
+
+    return Statement;
 }
 
 bool CreateSupply(const char* SupplyName, const char* UnitName, int Quantity)

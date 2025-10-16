@@ -3,9 +3,9 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: input.cpp
  * Author: Connor Taylor
- * Date last updated: 10/3/2025
+ * Last Update: 10/16/2025
  * Purpose: Define utility functions for reading input.
  */
 
@@ -62,10 +62,10 @@ bool ReadPositiveInt(int& Result)
     return true;
 }
 
-bool ReadPositiveFloat(float& Result)
+bool ReadPositiveDouble(double& Result)
 {
-    float ReadResult;
-    int Error = scanf("%f", &ReadResult);
+    double ReadResult;
+    int Error = scanf("%lf", &ReadResult);
     Flush();
 
     if (Error == EOF || Error == 0)

@@ -4,9 +4,9 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: input.hpp
  * Author: Connor Taylor
- * Date last updated: 10/3/2025
+ * Last Update: 10/16/2025
  * Purpose: Define utility functions for reading input.
  */
 
@@ -19,7 +19,7 @@
 void ClearScreen();
 
 bool ReadInt(int& Result);
-bool ReadPositiveFloat(float& Result);
+bool ReadPositiveDouble(double& Result);
 bool ReadPositiveInt(int& Result);
 bool ReadBool(bool& Result);
 bool ReadString(std::string& Result, std::regex Pattern);

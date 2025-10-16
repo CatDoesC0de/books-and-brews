@@ -4,9 +4,9 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: logger.cpp
  * Author: Connor Taylor
- * Date last updated: 10/3/2025
+ * Last Update: 10/16/2025
  * Purpose: Define a logger and provide utililty functions
  */
 
