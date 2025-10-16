@@ -13,6 +13,7 @@
 #include "logger.hpp"
 #include <assert.h>
 #include <stdio.h>
+#include <unistd.h>
 
 sqlite3* Database;
 
@@ -34,23 +35,25 @@ void DatabaseClose()
     sqlite3_close_v2(Database);
 }
 
-statement_reader::statement_reader(sqlite3_stmt* Statement)
-    : Statement(Statement), ReadIndex(0)
+row_reader::row_reader(sqlite3_stmt* Statement) : row_reader(Statement, 0) {}
+row_reader::row_reader(sqlite3_stmt* Statement, int ReadIndex)
+    : Statement(Statement), ReadIndex(ReadIndex)
 {}
 
-int statement_reader::integer()
+int row_reader::integer()
 {
     int Result = sqlite3_column_int(Statement, ReadIndex++);
     return Result;
 }
 
-Text* statement_reader::text()
+Text* row_reader::text()
 {
-    Text* Result = sqlite3_column_text(Statement, ReadIndex++);
+    Text* Result = reinterpret_cast<const char*>(
+        sqlite3_column_text(Statement, ReadIndex++));
     return Result;
 }
 
-double statement_reader::decimal()
+double row_reader::decimal()
 {
     double Result = sqlite3_column_double(Statement, ReadIndex++);
     return Result;
@@ -60,9 +63,10 @@ statement_binder::statement_binder(sqlite3_stmt* Statement)
     : Statement(Statement), BindIndex(1)
 {}
 
-void statement_binder::integer(int Value)
+statement_binder& statement_binder::integer(int Value)
 {
     sqlite3_bind_int(Statement, BindIndex++, Value);
+    return *this;
 }
 
 void Transaction()
@@ -102,10 +106,10 @@ bool StepRow(sqlite3_stmt* Statement)
 
     if (StepResult == SQLITE_DONE)
     {
-        return false; //No more rows, return false
+        return false; // No more rows, return false
     }
 
-    if (StepResult != SQLITE_ROW) //Not returning a row, log the error
+    if (StepResult != SQLITE_ROW) // Not returning a row, log the error
     {
         BB_LOG_ERROR("Failed to step query. (%s)", sqlite3_errmsg(Database));
         return false;
@@ -182,11 +186,7 @@ bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
     if (Statement != nullptr)
     {
         statement_binder Binder(Statement);
-
-        Binder.integer(OrderNumber);
-        Binder.integer(ItemID);
-        Binder.integer(ItemQuantity);
-
+        Binder.integer(OrderNumber).integer(ItemID).integer(ItemQuantity);
         Result = _Execute(Statement);
     }
 
@@ -207,7 +207,7 @@ sqlite3_stmt* GetOrder(int OrderNumber)
 
     if (Statement != nullptr)
     {
-        sqlite3_bind_int(Statement, 1, OrderNumber);
+        statement_binder(Statement).integer(OrderNumber);
 
         if (!StepRow(Statement))
         {
@@ -226,6 +226,86 @@ sqlite3_stmt* GetOrderList()
     return _GetList("MenuOrder");
 }
 
+bool DeleteOrder(int OrderNumber)
+{
+    Transaction();
+    sqlite3_stmt* OrderItemList = GetOrderItemList(OrderNumber);
+
+    bool Result = true;
+    while (StepRow(OrderItemList))
+    {
+        int ItemID = row_reader(OrderItemList, 1).integer();
+        if (!DeleteOrderItem(OrderNumber, ItemID))
+        {
+            Result = false;
+            break;
+        }
+    }
+
+    sqlite3_stmt* DeleteOrderStatement = nullptr;
+    if (Result)
+    {
+        DeleteOrderStatement =
+            Prepare("DELETE FROM MenuOrder WHERE OrderNumber = ?");
+
+        if (DeleteOrderStatement != nullptr)
+        {
+            statement_binder(DeleteOrderStatement).integer(OrderNumber);
+            if (!(Result = _Execute(DeleteOrderStatement)))
+            {
+                BB_LOG_ERROR("Failed to delete order with OrderNumber = %i",
+                             OrderNumber);
+            }
+        }
+    }
+
+    if (Result)
+    {
+        Commit();
+    }
+    else
+    {
+        Rollback();
+    }
+
+    sqlite3_finalize(DeleteOrderStatement);
+    sqlite3_finalize(OrderItemList);
+
+    return Result;
+}
+
+int GetOrderSize(int OrderNumber)
+{
+    sqlite3_stmt* Statement = Prepare(R"(
+        SELECT COUNT(*)
+        FROM MenuOrderItem
+        WHERE OrderNumber = ?
+    )");
+
+    int Result = 0;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(OrderNumber);
+        if (StepRow(Statement))
+        {
+            Result = row_reader(Statement).integer();
+        }
+    }
+
+    return Result;
+}
+
+sqlite3_stmt* GetOrderItemList(int OrderNumber)
+{
+    sqlite3_stmt* Statement =
+        Prepare("SELECT * FROM MenuOrderItem WHERE OrderNumber = ?");
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(OrderNumber);
+    }
+    return Statement;
+}
+
 sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber)
 {
     sqlite3_stmt* Statement = Prepare(R"(
@@ -240,7 +320,7 @@ sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber)
 
     if (Statement != nullptr)
     {
-        sqlite3_bind_int(Statement, 1, OrderNumber);
+        statement_binder(Statement).integer(OrderNumber);
     }
 
     return Statement;
@@ -254,7 +334,7 @@ int GetOrderItemCount(int OrderNumber)
     int Result = 0;
     if (Statement != nullptr)
     {
-        sqlite3_bind_int(Statement, 1, OrderNumber);
+        statement_binder(Statement).integer(OrderNumber);
 
         if (StepRow(Statement))
         {
@@ -276,8 +356,7 @@ sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID)
 
     if (Statement != nullptr)
     {
-        sqlite3_bind_int(Statement, 1, OrderNumber);
-        sqlite3_bind_int(Statement, 2, ItemID);
+        statement_binder(Statement).integer(OrderNumber).integer(ItemID);
 
         if (!StepRow(Statement))
         {
@@ -293,13 +372,61 @@ sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID)
     return Statement;
 }
 
+bool UpdateOrderItem(int OrderNumber, int ItemID, int Quantity)
+{
+    sqlite3_stmt* Statement = Prepare(R"(
+        UPDATE MenuOrderItem
+        SET OrderQuantity = ?
+        WHERE OrderNumber = ? AND ItemID = ?
+    )");
+
+    bool Result = false;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement)
+            .integer(Quantity)
+            .integer(OrderNumber)
+            .integer(ItemID);
+
+        if (!(Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR(
+                "Failed to update item for OrderNumber = %i, ItemID = %i",
+                OrderNumber, ItemID);
+        }
+    }
+
+    sqlite3_finalize(Statement);
+    return Result;
+}
+
+bool DeleteOrderItem(int OrderNumber, int ItemID)
+{
+    sqlite3_stmt* Statement = Prepare(
+        "DELETE FROM MenuOrderItem WHERE OrderNumber = ? AND ItemID = ?");
+
+    bool Result = false;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(OrderNumber).integer(ItemID);
+        if (!(Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR(
+                "Failed to remove item for OrderNumber = %i, ItemID = %i",
+                OrderNumber, ItemID);
+        }
+    }
+
+    return Result;
+}
+
 sqlite3_stmt* GetItem(int ItemID)
 {
     sqlite3_stmt* Statement = Prepare("SELECT * FROM Item WHERE ItemID = ?");
 
     if (Statement != nullptr)
     {
-        sqlite3_bind_int(Statement, 1, ItemID);
+        statement_binder(Statement).integer(ItemID);
 
         if (!StepRow(Statement))
         {

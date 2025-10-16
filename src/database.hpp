@@ -17,10 +17,11 @@
 
 extern sqlite3* Database;
 
-typedef const unsigned char Text;
-struct statement_reader
+typedef const char Text;
+struct row_reader
 {
-    statement_reader(sqlite3_stmt* Statement);
+    row_reader(sqlite3_stmt* Statement);
+    row_reader(sqlite3_stmt* Statement, int ReadIndex);
     int integer();
     Text* text();
     double decimal();
@@ -33,7 +34,7 @@ struct statement_reader
 struct statement_binder
 {
     statement_binder(sqlite3_stmt* Statement);
-    void integer(int Value);
+    statement_binder& integer(int Value);
 
     private:
     unsigned int BindIndex;
@@ -57,10 +58,15 @@ bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity);
 int GetOrderCount();
 sqlite3_stmt* GetOrder(int OrderNumber);
 sqlite3_stmt* GetOrderList();
+int GetOrderSize(int OrderNumber);
+bool DeleteOrder(int OrderNumber);
 
+sqlite3_stmt* GetOrderItemList(int OrderNumber);
 sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber); 
 int GetOrderItemCount(int OrderNumber);
 sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID);
+bool UpdateOrderItem(int OrderNumber, int ItemID, int Quantity);
+bool DeleteOrderItem(int OrderNumber, int ItemID);
 
 sqlite3_stmt* GetItem(int ItemID);
 int GetItemCount();

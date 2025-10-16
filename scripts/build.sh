@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash:q
 
 set -e
 
@@ -8,7 +8,7 @@ then
     echo "This project requires CMake to build."
 fi
 
-mkdir -p ../build 
+mkdir -p ../build
 
 #Check if sqlite3 is in the PATH
 if ! command -v sqlite3 >/dev/null >&1;
@@ -24,5 +24,5 @@ rm -f "$DB_FILE"
 #Create a fresh database
 sqlite3 "$DB_FILE" < ../database/setup.sql
 
-cmake -S .. -B ../build 
+cmake -S .. -B ../build
 cmake --build ../build --config Release

@@ -122,7 +122,7 @@ void ShowAddOrderMenu()
 
     std::vector<order_input> ItemsForOrder;
     auto ItemPrintCallback = [](sqlite3_stmt* ItemRow) {
-        statement_reader Reader(ItemRow);
+        row_reader Reader(ItemRow);
 
         int ItemID = Reader.integer();
         Text* ItemName = Reader.text();
@@ -138,10 +138,27 @@ void ShowAddOrderMenu()
                ItemsForOrder.size());
     };
 
-    auto ItemValidation = [](int ItemID) {
+    auto ItemValidation = [&](int ItemID) {
+        bool Result = true;
         sqlite3_stmt* Item = GetItem(ItemID);
+
+        Result = Item != nullptr;
+        if (Result)
+        {
+            for (const auto& OrderInput : ItemsForOrder)
+            {
+                if (OrderInput.ItemID == ItemID)
+                {
+                    BB_LOG_ERROR("%s has already been added to the order.",
+                                 OrderInput.ItemName.c_str());
+                    Result = false;
+                    break;
+                }
+            }
+        }
+
         sqlite3_finalize(Item);
-        return Item != nullptr;
+        return Result;
     };
 
     sqlite3_stmt* MenuItemList = GetItemList();
@@ -160,8 +177,7 @@ void ShowAddOrderMenu()
         sqlite3_stmt* Item = GetItem(ItemChoice);
         order_input Order;
         Order.ItemID = ItemChoice;
-        Order.ItemName =
-            reinterpret_cast<const char*>(sqlite3_column_text(Item, 1));
+        Order.ItemName = row_reader(Item, 1).text();
         sqlite3_finalize(Item);
 
         while (true)
@@ -263,15 +279,17 @@ int GetOrderSelection()
     PrintLogs();
 
     auto OrderPrintCallback = [](sqlite3_stmt* OrderRow) {
-        int OrderNumber = sqlite3_column_int(OrderRow, 0);
+        int OrderNumber = row_reader(OrderRow).integer();
         sqlite3_stmt* PreviewList = GetOrderItemPreviewList(OrderNumber);
 
         printf("#%i | ", OrderNumber);
         while (StepRow(PreviewList))
         {
-            int OrderQuantity = sqlite3_column_int(PreviewList, 0);
-            const char* ItemName =
-                (const char*)sqlite3_column_text(PreviewList, 2);
+            row_reader Reader(PreviewList);
+            int OrderQuantity = Reader.integer();
+            Reader.integer();
+            const char* ItemName = Reader.text();
+
             printf("x%i - %s ", OrderQuantity, ItemName);
         }
         printf("\n");
@@ -303,10 +321,11 @@ int GetOrderItemSelection(int OrderNumber)
     PrintLogs();
 
     auto OrderItemCallback = [](sqlite3_stmt* OrderPreviewRow) {
-        int OrderQuantity = sqlite3_column_int(OrderPreviewRow, 0);
-        int ItemID = sqlite3_column_int(OrderPreviewRow, 1);
-        const char* ItemName =
-            (const char*)sqlite3_column_text(OrderPreviewRow, 2);
+        row_reader Reader(OrderPreviewRow);
+        int OrderQuantity = Reader.integer();
+        int ItemID = Reader.integer();
+        const char* ItemName = Reader.text();
+
         printf("%i. %s (x%i)\n", ItemID, ItemName, OrderQuantity);
     };
 
@@ -341,11 +360,15 @@ void ShowUpdateOrderMenu()
         return;
     }
 
-    int OrderItemID = GetOrderItemSelection(OrderNumber);
-    if (OrderItemID == -1)
+    int ItemID = GetOrderItemSelection(OrderNumber);
+    if (ItemID == -1)
     {
         return;
     }
+
+    sqlite3_stmt* Item = GetItem(ItemID);
+    const char* ItemName = row_reader(Item, 1).text();
+
     while (true)
     {
         ClearScreen();
@@ -365,19 +388,56 @@ void ShowUpdateOrderMenu()
         switch (Choice)
         {
             case -1: return;
-            case 1: 
-                //TODO: Remove Order Item from DB
-                BB_LOG_INFO("Order item removed from order #%i", OrderNumber);
-                return; 
+            case 1:
+                if (GetOrderSize(OrderNumber) - 1 == 0)
+                {
+                    if (DeleteOrder(OrderNumber))
+                    {
+                        BB_LOG_INFO("Deleted order #%i", OrderNumber);
+                    }
+                }
+                else if (DeleteOrderItem(OrderNumber, ItemID))
+                {
+                    BB_LOG_INFO("%s removed from order #%i", ItemName,
+                                OrderNumber);
+                }
+                return;
             case 2:
-                // TODO: Prompt for quantity, update quantity
-                BB_LOG_INFO("Order item updated for order #%i", OrderNumber);
-                return; 
+                int Quantity;
+                while (true)
+                {
+                    ClearScreen();
+                    PrintLogs();
+
+                    printf("New Quantity? \n");
+                    printf(">> ");
+                    if (ReadInt(Quantity))
+                    {
+                        if (Quantity <= 0)
+                        {
+                            BB_LOG_ERROR(
+                                "Quantity must be a positive integer.");
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (UpdateOrderItem(OrderNumber, ItemID, Quantity))
+                {
+                    BB_LOG_INFO("Item %s updated with quantity %i", ItemName,
+                                Quantity);
+                }
+                return;
             default:
                 BB_LOG_ERROR("Invalid choice. Choice not available.");
                 continue;
         }
     }
+
+    sqlite3_finalize(Item);
 }
 
 void ShowUpdateMenu(bool& ShouldExit)
