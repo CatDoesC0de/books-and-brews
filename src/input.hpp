@@ -4,25 +4,22 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: input.hpp
  * Author: Connor Taylor
- * Date last updated: 10/3/2025
+ * Last Update: 10/16/2025
  * Purpose: Define utility functions for reading input.
  */
 
 #pragma once
 
 #include <stdlib.h>
-#include "logger.hpp"
-
-#define EXIT -1
-#define BAD_INPUT -2
-
-void Flush();
-
-struct range { int LowerBound, UpperBound; };
-bool InRange(int Value, range Range);
+#include <regex>
+#include <string>
 
 void ClearScreen();
-int ReadSelection(logger& Logger, range SelectionRange);
 
+bool ReadInt(int& Result);
+bool ReadPositiveDouble(double& Result);
+bool ReadPositiveInt(int& Result);
+bool ReadBool(bool& Result);
+bool ReadString(std::string& Result, std::regex Pattern);

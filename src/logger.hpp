@@ -4,39 +4,51 @@
  * Released under the MIT License.
  * -------------------------------
  *
- * Program name: books_and_brews.cpp
+ * Program name: logger.hpp
  * Author: Connor Taylor
- * Date last updated: 10/3/2025
+ * Last Update: 10/16/2025
  * Purpose: Define a logger and provide utililty functions
  */
+
 #pragma once
 
-#include "bb_common.hpp"
+#define BB_LOG_INFO(Format, ...)                                           \
+    Log(FormatString(log_level::log_info, Format, ##__VA_ARGS__))
+#define BB_LOG_WARN(Format, ...)                                           \
+    Log(FormatString(log_level::log_warning, Format, ##__VA_ARGS__))
+#define BB_LOG_ERROR(Format, ...)                                          \
+    Log(FormatString(log_level::log_error, Format, ##__VA_ARGS__))
 
-#define BB_INFO(logger, Format, ...)                                           \
-    Log(logger, FormatString(log_level::log_info, Format, ##__VA_ARGS__))
-#define BB_WARN(logger, Format, ...)                                           \
-    Log(logger, FormatString(log_level::log_warning, Format, ##__VA_ARGS__))
-#define BB_ERROR(logger, Format, ...)                                          \
-    Log(logger, FormatString(log_level::log_error, Format, ##__VA_ARGS__))
+#ifdef BB_DEBUG_BUILD
+    #define BB_LOG_DEBUG(Format, ...)                                          \
+        Log(FormatString(log_level::log_debug, Format, ##__VA_ARGS__))
+#else
+    #define BB_LOG_DEBUG(Format, ...)
+#endif
 
 enum class log_level
 {
     log_error,
     log_info,
-    log_warning
+    log_warning,
+    log_debug
 };
 
 struct logger
 {
     const char* Name;
     char** Messages;
-    u32 MessagesSize;
+    unsigned int MessagesSize;
 };
 
-logger CreateLogger(const char* Name, u32 Messages);
-void FreeLogger(logger& Logger);
-void ClearLogs(logger& Logger);
-void Log(logger& Logger, const char* String);
-void PrintLogMessages(logger& Logger);
+extern logger S_Logger;
+ 
+//Initialize the global S_Logger, called only once and before any logging.
+void LoggerInit(logger Logger); 
+
+logger CreateLogger(const char* Name, unsigned int Messages);
+void FreeLogger();
+void ClearLogs();
+void Log(char* String);
+void PrintLogs();
 char* FormatString(log_level LogLevel, const char* Format, ...);
