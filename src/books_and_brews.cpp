@@ -161,10 +161,10 @@ void ShowAddOrderMenu()
         return Result;
     };
 
-    sqlite3_stmt* MenuItemList = GetItemList();
-
+    sqlite3_stmt* MenuItemList;
     while (true)
     {
+        MenuItemList = GetItemList();
         int ItemChoice = GetPagingSelection(MenuItemList, MenuItemCount,
                                             "items", ItemPrintCallback,
                                             ItemSelectionText, ItemValidation);
@@ -218,7 +218,7 @@ void ShowAddOrderMenu()
             int64_t OrderNumber;
             if (!CreateOrder(OrderNumber))
             {
-                goto cleanup;
+                return;
             }
 
             Transaction();
@@ -227,17 +227,18 @@ void ShowAddOrderMenu()
                 if (!AddItemToOrder(OrderNumber, Input.ItemID, Input.Quantity))
                 {
                     Rollback();
-                    goto cleanup;
+                    break;
                 }
             }
+
             Commit();
-
             BB_LOG_INFO("Order created with ID: %li", OrderNumber);
+            sqlite3_finalize(MenuItemList);
+            break; 
         }
-    }
 
-cleanup:
-    sqlite3_finalize(MenuItemList);
+        sqlite3_finalize(MenuItemList);
+    }
 }
 
 void ShowAddMenu(bool& ShouldExit)
