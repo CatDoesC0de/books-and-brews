@@ -11,7 +11,7 @@
 
 #include "input.hpp"
 #include "logger.hpp"
-
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -47,6 +47,42 @@ bool ReadInt(int& Result)
     return true;
 }
 
+bool ReadPositiveInt(int& Result)
+{
+    int Input;
+    if (ReadInt(Input))
+    {
+        if (Input <= 0)
+        {
+            return false;
+        }
+    }
+
+    Result = Input; 
+    return true;
+}
+
+bool ReadPositiveFloat(float& Result)
+{
+    float ReadResult;
+    int Error = scanf("%f", &ReadResult);
+    Flush();
+
+    if (Error == EOF || Error == 0)
+    {
+        BB_LOG_ERROR("Invalid Selection. Expected decimal input.");
+        return false;
+    }
+
+    if (ReadResult <= 0)
+    {
+        return false;
+    }
+
+    Result = ReadResult;
+    return true;
+}
+
 bool ReadBool(bool& Result)
 {
     char ReadResult;
@@ -59,12 +95,8 @@ bool ReadBool(bool& Result)
         return false;
     }
 
-    if (
-            ReadResult == 'Y' 
-            || ReadResult == 'y' 
-            || ReadResult == 'N' 
-            || ReadResult == 'n'
-       )
+    if (ReadResult == 'Y' || ReadResult == 'y' || ReadResult == 'N' ||
+        ReadResult == 'n')
     {
         Result = (ReadResult == 'Y' || ReadResult == 'y');
     }
@@ -73,6 +105,23 @@ bool ReadBool(bool& Result)
         BB_LOG_ERROR("Invalid selection. Expected Y/y or N/n");
         return false;
     }
-    
+
+    return true;
+}
+
+bool ReadString(std::string& Result, std::regex Pattern)
+{
+    std::string Input;
+    std::getline(std::cin, Input);
+
+    if (!std::regex_match(Input, Pattern))
+    {
+        return false;
+    }
+
+    Input.erase(0, Input.find_first_not_of(' '));
+    Input.erase(Input.find_last_not_of(' ') + 1);
+
+    Result = std::move(Input);
     return true;
 }

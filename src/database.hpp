@@ -14,19 +14,19 @@
 
 #include "sqlite3.h"
 #include <cstdint>
+#include <vector>
 
 extern sqlite3* Database;
 
-typedef const char Text;
 struct row_reader
 {
     row_reader(sqlite3_stmt* Statement);
     row_reader(sqlite3_stmt* Statement, int ReadIndex);
     int integer();
-    Text* text();
+    const char* text();
     double decimal();
 
-    private:
+        private:
     unsigned int ReadIndex;
     sqlite3_stmt* Statement;
 };
@@ -35,25 +35,39 @@ struct statement_binder
 {
     statement_binder(sqlite3_stmt* Statement);
     statement_binder& integer(int Value);
+    statement_binder& decimal(double Value);
+    statement_binder& text(const char* Text);
 
-    private:
+        private:
     unsigned int BindIndex;
     sqlite3_stmt* Statement;
+};
+
+struct ingredient
+{
+    int SupplyID;
+    float Quantity;
+};
+
+struct order_input
+{
+    int ItemID;
+    int Quantity;
 };
 
 bool DatabaseInit(const char* FileName);
 void DatabaseClose();
 
+// Utility
 void Transaction();
 void Commit();
 void Rollback();
-
 int64_t LastInsertRowID();
-
 bool StepRow(sqlite3_stmt* Cursor);
 bool Prepare(sqlite3_stmt* Cursor);
 
-bool CreateOrder(int64_t& Result);
+// Order/MenuOrder
+bool CreateOrder(std::vector<order_input>& Items);
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity);
 int GetOrderCount();
 sqlite3_stmt* GetOrder(int OrderNumber);
@@ -61,13 +75,23 @@ sqlite3_stmt* GetOrderList();
 int GetOrderSize(int OrderNumber);
 bool DeleteOrder(int OrderNumber);
 
+// MenuOrderItem
 sqlite3_stmt* GetOrderItemList(int OrderNumber);
-sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber); 
+sqlite3_stmt* GetOrderItemPreviewList(int OrderNumber);
 int GetOrderItemCount(int OrderNumber);
 sqlite3_stmt* GetOrderItem(int OrderNumber, int ItemID);
 bool UpdateOrderItem(int OrderNumber, int ItemID, int Quantity);
 bool DeleteOrderItem(int OrderNumber, int ItemID);
 
+// Item
 sqlite3_stmt* GetItem(int ItemID);
 int GetItemCount();
-sqlite3_stmt* GetItemList(); 
+sqlite3_stmt* GetItemList();
+bool CreateItem(const char* ItemName, const char* ItemDescription,
+                float ItemPrice, const std::vector<ingredient>& Ingredients);
+
+// Supply
+bool CreateSupply(const char* SupplyName, const char* UnitName, int Quantity);
+sqlite3_stmt* GetSupplyItem(int SupplyID);
+sqlite3_stmt* GetSupplyList();
+int GetSupplyCount();

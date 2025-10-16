@@ -15,15 +15,18 @@
 #include "logger.hpp"
 #include <assert.h>
 #include <functional>
+#include <regex>
 #include <stdio.h>
 #include <string>
 #include <unistd.h>
 #include <vector>
 
+std::regex LettersOnlyRegex("^([A-Za-z ]+|-1)$");
+
 static int
 GetPagingSelection(sqlite3_stmt* QueryList, int QueryListCount,
                    const char* RowName,
-                   const std::function<void(sqlite3_stmt*)>& RowPrintFunction,
+                   const std::function<void(row_reader)>& RowPrintFunction,
                    const std::function<void()>& SelectionText,
                    const std::function<bool(int Selection)>& Validate)
 {
@@ -56,7 +59,7 @@ GetPagingSelection(sqlite3_stmt* QueryList, int QueryListCount,
 
         for (int i = 0; i < RowsPerPage && StepRow(QueryList); i++)
         {
-            RowPrintFunction(QueryList);
+            RowPrintFunction(row_reader(QueryList));
         }
 
         printf(">> ");
@@ -101,11 +104,255 @@ GetPagingSelection(sqlite3_stmt* QueryList, int QueryListCount,
     assert(true && "Never should reach this point.");
 }
 
+void ShowAddItemMenu()
+{
+    std::string ItemName;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What is the name of the new item? (-1 to cancel)\n");
+        printf(">> ");
+
+        if (ReadString(ItemName, LettersOnlyRegex))
+        {
+            break;
+        }
+        BB_LOG_ERROR(
+            "Invalid item name. Only letters are allowed in the name.");
+    }
+
+    if (ItemName == "-1")
+    {
+        return;
+    }
+
+    auto SupplyPrintFunction = [](row_reader Reader) {
+        int SupplyID = Reader.integer();
+        const char* SupplyName = Reader.text();
+
+        printf("%i. %s\n", SupplyID, SupplyName);
+    };
+
+    auto SupplySelectionText = []() {
+        printf("Select a supply to add to this item.\n");
+    };
+
+    std::vector<ingredient> Ingredients;
+    auto SupplyValidation = [&](int SupplyID) {
+        for (const ingredient Ingredient : Ingredients)
+        {
+            if (Ingredient.SupplyID == SupplyID)
+            {
+                BB_LOG_ERROR("Ingredient already added to this item.");
+                return false;
+            }
+        }
+
+        sqlite3_stmt* SupplyItem = GetSupplyItem(SupplyID);
+        sqlite3_finalize(SupplyItem);
+        return SupplyItem != nullptr;
+    };
+
+    sqlite3_stmt* SupplyList = GetSupplyList();
+    int SupplyCount = GetSupplyCount();
+    while (true)
+    {
+        sqlite3_reset(SupplyList);
+
+        int SupplyID = GetPagingSelection(
+            SupplyList, SupplyCount, "supply", SupplyPrintFunction,
+            SupplySelectionText, SupplyValidation);
+
+        if (SupplyID == -1)
+        {
+            sqlite3_finalize(SupplyList);
+            return;
+        }
+
+        sqlite3_stmt* SupplyItem = GetSupplyItem(SupplyID);
+        row_reader Reader(SupplyItem);
+        Reader.integer(); // Skip ID
+        const char* SupplyName = Reader.text();
+        Reader.integer(); // Skip Quantity
+        const char* SupplyUnitName = Reader.text();
+
+        float IngredientQuantity;
+        while (true)
+        {
+            ClearScreen();
+            PrintLogs();
+
+            printf("How much of '%s' does this item use? (Units: %s) (eg. "
+                   "'1.5')\n",
+                   SupplyName, SupplyUnitName);
+            printf(">> ");
+
+            if (ReadPositiveFloat(IngredientQuantity))
+            {
+                break;
+            }
+
+            BB_LOG_ERROR("Quantity must be a positive value");
+        }
+        sqlite3_finalize(SupplyItem);
+
+        Ingredients.push_back(
+            {.SupplyID = SupplyID, .Quantity = IngredientQuantity});
+
+        bool AddAnotherIngredient;
+        while (true)
+        {
+            ClearScreen();
+            PrintLogs();
+
+            printf("Add another ingredient? [Y/N]\n");
+            printf(">> ");
+
+            if (ReadBool(AddAnotherIngredient))
+            {
+                break;
+            }
+        }
+
+        if (!AddAnotherIngredient)
+        {
+            break;
+        }
+    }
+
+    std::string ItemDescription;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What is the description of the '%s'? (-1 to cancel)\n",
+               ItemName.c_str());
+        printf(">> ");
+
+        if (ReadString(ItemDescription, std::regex("^([A-Za-z .,]+|-1)$")))
+        {
+            break;
+        }
+        BB_LOG_ERROR("Invalid item description. Only letters and punctuation are allowed in "
+                     "the description.");
+    }
+
+    if (ItemDescription == "-1")
+    {
+        return;
+    }
+
+    float ItemPrice;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What is the price of '%s'? (-1 to cancel)\n", ItemName.c_str());
+        printf(">> ");
+
+        if (ReadPositiveFloat(ItemPrice))
+        {
+            break;
+        }
+
+        BB_LOG_ERROR("Invalid item price. Expected postive decimal > 0.");
+    }
+
+    if (CreateItem(ItemName.c_str(), ItemDescription.c_str(), ItemPrice, Ingredients))
+    {
+        int64_t ItemID = LastInsertRowID();
+        BB_LOG_INFO("Item '%s' created with ID: %i", ItemName.c_str(), ItemID);
+    }
+
+    sqlite3_finalize(SupplyList);
+}
+
+void ShowAddSupplyMenu()
+{
+    std::string SupplyName;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What is the name of the new supply? (-1 to cancel)\n");
+        printf(">> ");
+
+        if (ReadString(SupplyName, LettersOnlyRegex))
+        {
+            break;
+        }
+
+        BB_LOG_ERROR(
+            "Invalid supply name. Only letters are allowed in the name.");
+    }
+
+    if (SupplyName == "-1")
+    {
+        return;
+    }
+
+    std::string UnitName;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("What are the new supply units? (eg. lbs, bags, oz) (-1 to "
+               "cancel)\n");
+        printf(">> ");
+
+        if (ReadString(UnitName, LettersOnlyRegex))
+        {
+            break;
+        }
+        BB_LOG_ERROR(
+            "Invalid unit name. Only letters are allowed in the name.");
+    }
+
+    if (UnitName == "-1")
+    {
+        return;
+    }
+
+    int Quantity;
+    while (true)
+    {
+        ClearScreen();
+        PrintLogs();
+
+        printf("How many units of this supply are currently in stock? (-1 to "
+               "cancel)\n");
+        printf(">> ");
+
+        if (!ReadInt(Quantity))
+        {
+            BB_LOG_ERROR("Current stock quantity must be an integer.");
+        }
+        else if (Quantity >= -1)
+        {
+            break;
+        }
+    }
+
+    if (Quantity == -1)
+    {
+        return;
+    }
+
+    if (CreateSupply(SupplyName.c_str(), UnitName.c_str(), Quantity))
+    {
+        int64_t SupplyID = LastInsertRowID();
+        BB_LOG_INFO("Created supply '%s' with ID: %i", SupplyName.c_str(), SupplyID);
+    }
+}
+
 void ShowAddOrderMenu()
 {
-    ClearScreen();
-    PrintLogs();
-
     int MenuItemCount = GetItemCount();
     if (MenuItemCount == 0)
     {
@@ -113,20 +360,11 @@ void ShowAddOrderMenu()
         return;
     }
 
-    struct order_input
-    {
-        std::string ItemName;
-        int ItemID;
-        int Quantity;
-    };
-
     std::vector<order_input> ItemsForOrder;
-    auto ItemPrintCallback = [](sqlite3_stmt* ItemRow) {
-        row_reader Reader(ItemRow);
-
+    auto ItemPrintCallback = [](row_reader Reader) {
         int ItemID = Reader.integer();
-        Text* ItemName = Reader.text();
-        Text* ItemDescription = Reader.text();
+        const char* ItemName = Reader.text();
+        const char* ItemDescription = Reader.text();
         float ItemPrice = Reader.decimal();
 
         printf("%i. %s [%s] - %.2f\n", ItemID, ItemName, ItemDescription,
@@ -139,32 +377,27 @@ void ShowAddOrderMenu()
     };
 
     auto ItemValidation = [&](int ItemID) {
-        bool Result = true;
-        sqlite3_stmt* Item = GetItem(ItemID);
-
-        Result = Item != nullptr;
-        if (Result)
+        for (const auto& OrderInput : ItemsForOrder)
         {
-            for (const auto& OrderInput : ItemsForOrder)
+            if (OrderInput.ItemID == ItemID)
             {
-                if (OrderInput.ItemID == ItemID)
-                {
-                    BB_LOG_ERROR("%s has already been added to the order.",
-                                 OrderInput.ItemName.c_str());
-                    Result = false;
-                    break;
-                }
+                BB_LOG_ERROR("Item has already been added to the order.");
+                return false;
             }
         }
 
+        sqlite3_stmt* Item = GetItem(ItemID);
         sqlite3_finalize(Item);
-        return Result;
+        return Item != nullptr;
     };
 
-    sqlite3_stmt* MenuItemList;
+    sqlite3_stmt* MenuItemList = GetItemList();
     while (true)
     {
-        MenuItemList = GetItemList();
+        ClearScreen();
+        PrintLogs();
+
+        sqlite3_reset(MenuItemList);
         int ItemChoice = GetPagingSelection(MenuItemList, MenuItemCount,
                                             "items", ItemPrintCallback,
                                             ItemSelectionText, ItemValidation);
@@ -174,71 +407,58 @@ void ShowAddOrderMenu()
             break;
         }
 
-        sqlite3_stmt* Item = GetItem(ItemChoice);
-        order_input Order;
-        Order.ItemID = ItemChoice;
-        Order.ItemName = row_reader(Item, 1).text();
-        sqlite3_finalize(Item);
 
+        sqlite3_stmt* Item = GetItem(ItemChoice);
+        const char* ItemName = row_reader(Item, 1).text();
+
+        int Quantity;
         while (true)
         {
             ClearScreen();
             PrintLogs();
 
-            printf("Quantity for %s:\n", Order.ItemName.c_str());
+            printf("Quantity for %s:\n", ItemName);
             printf(">> ");
 
-            if (ReadInt(Order.Quantity))
+            if (ReadInt(Quantity))
             {
-                if (Order.Quantity <= 0)
-                {
-                    BB_LOG_ERROR("Quantity must be a positive integer.");
-                }
-                else
+                if (Quantity > 0)
                 {
                     break;
                 }
+                BB_LOG_ERROR("Quantity must be a positive integer > 0.");
             }
         }
+        sqlite3_finalize(Item);
 
-        ItemsForOrder.push_back(Order);
-
+        ItemsForOrder.push_back({ .ItemID = ItemChoice, .Quantity = Quantity});
         bool AddAnotherItem;
-        do
+        while (true)
         {
             ClearScreen();
             PrintLogs();
 
             printf("Add another item? [Y/N]\n");
             printf(">> ");
-        } while (!ReadBool(AddAnotherItem));
 
-        if (!AddAnotherItem)
-        {
-            int64_t OrderNumber;
-            if (!CreateOrder(OrderNumber))
+            if (ReadBool(AddAnotherItem))
             {
-                return;
+                break;
             }
-
-            Transaction();
-            for (order_input Input : ItemsForOrder)
-            {
-                if (!AddItemToOrder(OrderNumber, Input.ItemID, Input.Quantity))
-                {
-                    Rollback();
-                    break;
-                }
-            }
-
-            Commit();
-            BB_LOG_INFO("Order created with ID: %li", OrderNumber);
-            sqlite3_finalize(MenuItemList);
-            break; 
         }
 
+        if (!AddAnotherItem && CreateOrder(ItemsForOrder))
+        {
+            int64_t OrderNumber = LastInsertRowID();
+            BB_LOG_INFO("Order created with ID: %li", OrderNumber);
+
+            break;
+        }
+        
         sqlite3_finalize(MenuItemList);
     }
+
+    sqlite3_finalize(MenuItemList);
 }
 
 void ShowAddMenu(bool& ShouldExit)
@@ -250,7 +470,8 @@ void ShowAddMenu(bool& ShouldExit)
 
         printf("What would you like to add? (-1 to exit, 0 to go back)\n");
         printf("1. Order\n");
-        printf("2. Menu Item\n");
+        printf("2. Supply\n");
+        printf("3. Item\n");
         printf(">> ");
 
         int Choice;
@@ -262,9 +483,8 @@ void ShowAddMenu(bool& ShouldExit)
         switch (Choice)
         {
             case 1: ShowAddOrderMenu(); break;
-            case 2:
-                // Show add menu item menu
-                break;
+            case 2: ShowAddSupplyMenu(); break;
+            case 3: ShowAddItemMenu();
             case 0: return;
             case -1: ShouldExit = true; return;
             default:
@@ -279,8 +499,8 @@ int GetOrderSelection()
     ClearScreen();
     PrintLogs();
 
-    auto OrderPrintCallback = [](sqlite3_stmt* OrderRow) {
-        int OrderNumber = row_reader(OrderRow).integer();
+    auto OrderPrintCallback = [](row_reader Reader) {
+        int OrderNumber = Reader.integer();
         sqlite3_stmt* PreviewList = GetOrderItemPreviewList(OrderNumber);
 
         printf("#%i | ", OrderNumber);
@@ -321,8 +541,7 @@ int GetOrderItemSelection(int OrderNumber)
     ClearScreen();
     PrintLogs();
 
-    auto OrderItemCallback = [](sqlite3_stmt* OrderPreviewRow) {
-        row_reader Reader(OrderPreviewRow);
+    auto OrderItemCallback = [](row_reader Reader) {
         int OrderQuantity = Reader.integer();
         int ItemID = Reader.integer();
         const char* ItemName = Reader.text();
@@ -412,18 +631,13 @@ void ShowUpdateOrderMenu()
 
                     printf("New Quantity? \n");
                     printf(">> ");
-                    if (ReadInt(Quantity))
+
+                    if (ReadPositiveInt(Quantity))
                     {
-                        if (Quantity <= 0)
-                        {
-                            BB_LOG_ERROR(
-                                "Quantity must be a positive integer.");
-                        }
-                        else
-                        {
-                            break;
-                        }
+                        break;
+                        BB_LOG_ERROR("Quantity must be a positive integer.");
                     }
+                    BB_LOG_ERROR("Quantity must be a positive integer.");
                 }
 
                 if (UpdateOrderItem(OrderNumber, ItemID, Quantity))

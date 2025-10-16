@@ -13,8 +13,13 @@
 #pragma once
 
 #include <stdlib.h>
+#include <regex>
+#include <string>
 
 void ClearScreen();
 
 bool ReadInt(int& Result);
+bool ReadPositiveFloat(float& Result);
+bool ReadPositiveInt(int& Result);
 bool ReadBool(bool& Result);
+bool ReadString(std::string& Result, std::regex Pattern);

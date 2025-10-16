@@ -46,9 +46,9 @@ int row_reader::integer()
     return Result;
 }
 
-Text* row_reader::text()
+const char* row_reader::text()
 {
-    Text* Result = reinterpret_cast<const char*>(
+    const char* Result = reinterpret_cast<const char*>(
         sqlite3_column_text(Statement, ReadIndex++));
     return Result;
 }
@@ -66,6 +66,18 @@ statement_binder::statement_binder(sqlite3_stmt* Statement)
 statement_binder& statement_binder::integer(int Value)
 {
     sqlite3_bind_int(Statement, BindIndex++, Value);
+    return *this;
+}
+
+statement_binder& statement_binder::decimal(double Value)
+{
+    sqlite3_bind_double(Statement, BindIndex++, Value);
+    return *this;
+}
+
+statement_binder& statement_binder::text(const char* Text)
+{
+    sqlite3_bind_text(Statement, BindIndex++, Text, -1, nullptr);
     return *this;
 }
 
@@ -156,24 +168,50 @@ static sqlite3_stmt* _GetList(const char* Table)
     return Statement;
 }
 
-bool CreateOrder(int64_t& Result)
+bool CreateOrder(std::vector<order_input>& Items)
 {
     sqlite3_stmt* Statement =
         Prepare("INSERT INTO MenuOrder (OrderDate) VALUES (current_date)");
 
-    bool Created = false;
-    if (Statement != nullptr && _Execute(Statement))
-    {
-        Result = LastInsertRowID();
-        Created = true;
-    }
-    else
+    Transaction();
+    bool Result = true;
+    if (Statement == nullptr || !(Result = _Execute(Statement)))
     {
         BB_LOG_ERROR("Failed to create a new order.");
     }
+    sqlite3_finalize(Statement);
+
+    int64_t OrderNumber = LastInsertRowID();
+    if (Result)
+    {
+        Statement = Prepare(
+            "INSERT INTO MenuOrderItem (OrderNumber, ItemID, OrderQuantity)"
+            "VALUES (?, ?, ?)");
+
+        if (Statement != nullptr)
+        {
+            for (order_input Input : Items)
+            {
+
+                statement_binder(Statement)
+                    .integer(OrderNumber)
+                    .integer(Input.ItemID)
+                    .integer(Input.Quantity);
+
+                if (!(Result = _Execute(Statement)))
+                {
+                    break;
+                }
+
+                sqlite3_reset(Statement);
+                sqlite3_clear_bindings(Statement);
+            }
+        }
+    }
 
     sqlite3_finalize(Statement);
-    return Created;
+    Result ? Commit() : Rollback();
+    return Result;
 }
 
 bool AddItemToOrder(int OrderNumber, int ItemID, int ItemQuantity)
@@ -449,4 +487,122 @@ sqlite3_stmt* GetItemList()
 {
     sqlite3_stmt* Result = _GetList("Item");
     return Result;
+}
+
+bool CreateItem(const char* ItemName, const char* ItemDescription,
+                float ItemPrice, const std::vector<ingredient>& Ingredients)
+{
+    bool Result = true;
+    sqlite3_stmt* Statement = Prepare(R"(
+        INSERT INTO Item (ItemName, ItemDescription, ItemPrice)
+        VALUES (?, ?, ?)
+    )");
+
+    Transaction();
+    int64_t ItemID;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement)
+            .text(ItemName)
+            .text(ItemDescription)
+            .decimal(ItemPrice);
+
+        if (!(Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR("Failed to create item '%s'", ItemName);
+        }
+    }
+
+    sqlite3_finalize(Statement);
+    if (Result)
+    {
+        Result = true;
+        ItemID = LastInsertRowID();
+
+        Statement = Prepare(R"(
+            INSERT INTO Ingredient (ItemID, SupplyID, Quantity)
+            VALUES (?, ?, ?)
+        )");
+
+        if (Statement != nullptr)
+        {
+            for (const ingredient Ingredient : Ingredients)
+            {
+                BB_LOG_DEBUG("ItemID = %i SupplyID = %i, Quantity = %i", ItemID,
+                             Ingredient.SupplyID, Ingredient.Quantity);
+                statement_binder(Statement)
+                    .integer(ItemID)
+                    .integer(Ingredient.SupplyID)
+                    .decimal(Ingredient.Quantity);
+
+                if (!(Result = _Execute(Statement)))
+                {
+                    break;
+                }
+
+                sqlite3_reset(Statement);
+                sqlite3_clear_bindings(Statement);
+            }
+        }
+    }
+
+    sqlite3_finalize(Statement);
+    Result ? Commit() : Rollback();
+    return Result;
+}
+
+bool CreateSupply(const char* SupplyName, const char* UnitName, int Quantity)
+{
+    sqlite3_stmt* Statement = Prepare(R"(
+        INSERT INTO SupplyItem(SupplyName, StockQuantity, UnitName)
+        VALUES (?, ?, ?)
+    )");
+
+    bool Result = false;
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement)
+            .text(SupplyName)
+            .integer(Quantity)
+            .text(UnitName);
+
+        if (!(Result = _Execute(Statement)))
+        {
+            BB_LOG_ERROR(
+                "Failed to create a supply item from\n"
+                "\t SupplyName = %s, StockQuantity = %s, UnitName = %s",
+                SupplyName, Quantity, UnitName);
+        }
+    }
+
+    return Result;
+}
+
+sqlite3_stmt* GetSupplyItem(int SupplyID)
+{
+    sqlite3_stmt* Statement =
+        Prepare("SELECT * FROM SupplyItem WHERE SupplyID = ?");
+
+    if (Statement != nullptr)
+    {
+        statement_binder(Statement).integer(SupplyID);
+
+        if (!StepRow(Statement))
+        {
+            BB_LOG_ERROR("Failed to find SupplyItem with SupplyID = %i",
+                         SupplyID);
+        }
+    }
+
+    return Statement;
+}
+
+sqlite3_stmt* GetSupplyList()
+{
+    return _GetList("SupplyItem");
+}
+
+int GetSupplyCount()
+{
+    return _GetCount("SupplyItem");
 }
